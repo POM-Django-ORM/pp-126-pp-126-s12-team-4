@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -16,10 +17,10 @@ class Book(models.Model):
         type authors: list->Author
     """
 
-    name = models.CharField(max_length=128)
-    description = models.TextField()
-    count = models.IntegerField(default=10)
-    authors = models.ManyToManyField('Author', related_name='books')
+    name = models.CharField(max_length=128, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    count = models.IntegerField(default=10, blank=True)
+    authors = models.ManyToManyField('author.Author', related_name='books')
 
     def __str__(self):
         """
@@ -66,10 +67,16 @@ class Book(models.Model):
         type authors: list->Author
         :return: a new book object which is also written into the DB
         """
-        book = Book.objects.create(name=name, description=description, count=count)
-        if authors:
-            book.authors.add(*authors)
-        return book
+        book = Book(name=name, description=description, count=count)
+        try:
+            book.full_clean()
+            book.save()
+
+            if authors:
+                book.authors.add(*authors)
+            return book
+        except ValidationError:
+            return None
 
     def to_dict(self):
         """
@@ -102,7 +109,16 @@ class Book(models.Model):
         type count: int default=10
         :return: None
         """
-        Book.objects.filter(id=self.id).update(name=name, description=description, count=count)
+        attrs = {
+            'name': name,
+            'description': description,
+            'count': count
+        }
+
+        for attr, value in attrs.items():
+            if value is not None:
+                setattr(self, attr, value)
+        self.save()
         self.refresh_from_db()
 
     def add_authors(self, authors):
@@ -128,4 +144,4 @@ class Book(models.Model):
         """
         returns data for json request with QuerySet of all books
         """
-        return Book.objects.all()
+        return list(Book.objects.all())
